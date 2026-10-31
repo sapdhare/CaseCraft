@@ -1,6 +1,30 @@
 enum CaseStatus { active, stayed, disposed }
 enum DisposalResult { allowed, rejected }
 
+/// Stored values of [LegalCase.type].
+const courtCase = 'Court Case';
+const incomeTaxCase = 'Income Tax';
+const otherMatter = 'Matter';
+
+final _panPattern = RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$');
+bool isValidPan(String value) => _panPattern.hasMatch(value.trim().toUpperCase());
+bool isValidPhone(String value) => RegExp(r'^\+?[0-9]{7,15}$').hasMatch(value.replaceAll(RegExp(r'[\s\-()]'), ''));
+
+/// Parses a user-typed amount. Null for blank, negative, non-numeric or absurd values.
+double? parseAmount(String text) {
+  final v = double.tryParse(text.trim().replaceAll(',', ''));
+  if (v == null || !v.isFinite || v < 0 || v > 1e12) return null;
+  return roundMoney(v);
+}
+
+double roundMoney(num v) => (v * 100).round() / 100;
+
+DateTime? _date(dynamic v) => v is num ? DateTime.fromMillisecondsSinceEpoch(v.toInt()) : null;
+double _money(dynamic v) => v is num && v.isFinite && v >= 0 ? roundMoney(v) : 0;
+String _str(dynamic v) => v == null ? '' : '$v';
+List<T> _list<T>(dynamic v, T Function(Map) parse) =>
+    v is List ? v.whereType<Map>().map((e) => parse(Map<String, dynamic>.from(e))).toList() : <T>[];
+
 class CaseUpdate {
   final String id;
   final DateTime date;
@@ -8,13 +32,7 @@ class CaseUpdate {
   final DateTime? nextDate;
   final String note;
 
-  const CaseUpdate({
-    required this.id,
-    required this.date,
-    required this.outcome,
-    this.nextDate,
-    this.note = '',
-  });
+  const CaseUpdate({required this.id, required this.date, required this.outcome, this.nextDate, this.note = ''});
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -25,13 +43,71 @@ class CaseUpdate {
       };
 
   factory CaseUpdate.fromMap(Map map) => CaseUpdate(
-        id: '${map['id'] ?? ''}',
-        date: DateTime.fromMillisecondsSinceEpoch((map['date'] as int?) ?? 0),
-        outcome: '${map['outcome'] ?? ''}',
-        nextDate: map['nextDate'] == null
-            ? null
-            : DateTime.fromMillisecondsSinceEpoch(map['nextDate'] as int),
-        note: '${map['note'] ?? ''}',
+        id: _str(map['id']),
+        date: _date(map['date']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+        outcome: _str(map['outcome']),
+        nextDate: _date(map['nextDate']),
+        note: _str(map['note']),
+      );
+}
+
+/// Money received from the client on a given date.
+class Payment {
+  final String id;
+  final DateTime date;
+  final double amount;
+  final String note;
+
+  const Payment({required this.id, required this.date, required this.amount, this.note = ''});
+
+  Map<String, dynamic> toMap() => {'id': id, 'date': date.millisecondsSinceEpoch, 'amount': amount, 'note': note};
+
+  factory Payment.fromMap(Map map) => Payment(
+        id: _str(map['id']),
+        date: _date(map['date']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+        amount: _money(map['amount']),
+        note: _str(map['note']),
+      );
+}
+
+/// A move of the case from one court / judge to another.
+class CourtTransfer {
+  final String id;
+  final DateTime date;
+  final String fromCourt;
+  final String toCourt;
+  final String fromJudge;
+  final String toJudge;
+  final String reason;
+
+  const CourtTransfer({
+    required this.id,
+    required this.date,
+    required this.fromCourt,
+    required this.toCourt,
+    this.fromJudge = '',
+    this.toJudge = '',
+    this.reason = '',
+  });
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'date': date.millisecondsSinceEpoch,
+        'fromCourt': fromCourt,
+        'toCourt': toCourt,
+        'fromJudge': fromJudge,
+        'toJudge': toJudge,
+        'reason': reason,
+      };
+
+  factory CourtTransfer.fromMap(Map map) => CourtTransfer(
+        id: _str(map['id']),
+        date: _date(map['date']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+        fromCourt: _str(map['fromCourt']),
+        toCourt: _str(map['toCourt']),
+        fromJudge: _str(map['fromJudge']),
+        toJudge: _str(map['toJudge']),
+        reason: _str(map['reason']),
       );
 }
 
@@ -41,25 +117,15 @@ class CaseDocument {
   final String path;
   final DateTime addedOn;
 
-  const CaseDocument({
-    required this.id,
-    required this.name,
-    required this.path,
-    required this.addedOn,
-  });
+  const CaseDocument({required this.id, required this.name, required this.path, required this.addedOn});
 
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'name': name,
-        'path': path,
-        'addedOn': addedOn.millisecondsSinceEpoch,
-      };
+  Map<String, dynamic> toMap() => {'id': id, 'name': name, 'path': path, 'addedOn': addedOn.millisecondsSinceEpoch};
 
   factory CaseDocument.fromMap(Map map) => CaseDocument(
-        id: '${map['id'] ?? ''}',
-        name: '${map['name'] ?? ''}',
-        path: '${map['path'] ?? ''}',
-        addedOn: DateTime.fromMillisecondsSinceEpoch((map['addedOn'] as int?) ?? 0),
+        id: _str(map['id']),
+        name: _str(map['name']),
+        path: _str(map['path']),
+        addedOn: _date(map['addedOn']) ?? DateTime.fromMillisecondsSinceEpoch(0),
       );
 }
 
@@ -70,10 +136,14 @@ class LegalCase {
   final String caseTitle;
   final String clientName;
   final String clientContact;
+  final String panNumber;
+  /// Client's income-tax portal password. Kept only in the encrypted on-device store, never exported.
+  final String panPassword;
   final String opponentName;
   final String opponentAdvocate;
   final String court;
   final String judge;
+  /// Shown as "Case type" (civil suit, bail, writ…).
   final String caseNature;
   final String sections;
   final DateTime? filingDate;
@@ -83,10 +153,14 @@ class LegalCase {
   final CaseStatus status;
   final DisposalResult? disposalResult;
   final DateTime? disposedOn;
+  /// Fee quoted to the client.
   final double totalFee;
-  final double feeReceived;
+  final List<Payment> payments;
   final List<CaseUpdate> updates;
+  final List<CourtTransfer> transfers;
   final List<CaseDocument> documents;
+  /// Last local change; a cloud sync uses it to pick the newer copy.
+  final DateTime? updatedAt;
 
   const LegalCase({
     required this.id,
@@ -95,6 +169,8 @@ class LegalCase {
     required this.caseTitle,
     required this.clientName,
     required this.clientContact,
+    this.panNumber = '',
+    this.panPassword = '',
     required this.opponentName,
     required this.opponentAdvocate,
     required this.court,
@@ -109,12 +185,18 @@ class LegalCase {
     this.disposalResult,
     this.disposedOn,
     this.totalFee = 0,
-    this.feeReceived = 0,
+    this.payments = const [],
     this.updates = const [],
+    this.transfers = const [],
     this.documents = const [],
+    this.updatedAt,
   });
 
-  double get outstanding => (totalFee - feeReceived).clamp(0, double.infinity);
+  bool get isIncomeTax => type == incomeTaxCase;
+  bool get isCourtCase => type == courtCase;
+  double get feeReceived => roundMoney(payments.fold<double>(0, (s, p) => s + p.amount));
+  double get outstanding => roundMoney((totalFee - feeReceived).clamp(0, double.infinity));
+  double get excessReceived => roundMoney((feeReceived - totalFee).clamp(0, double.infinity));
 
   LegalCase copyWith({
     String? type,
@@ -122,6 +204,8 @@ class LegalCase {
     String? caseTitle,
     String? clientName,
     String? clientContact,
+    String? panNumber,
+    String? panPassword,
     String? opponentName,
     String? opponentAdvocate,
     String? court,
@@ -138,9 +222,11 @@ class LegalCase {
     bool clearDisposalResult = false,
     DateTime? disposedOn,
     double? totalFee,
-    double? feeReceived,
+    List<Payment>? payments,
     List<CaseUpdate>? updates,
+    List<CourtTransfer>? transfers,
     List<CaseDocument>? documents,
+    DateTime? updatedAt,
   }) {
     return LegalCase(
       id: id,
@@ -149,6 +235,8 @@ class LegalCase {
       caseTitle: caseTitle ?? this.caseTitle,
       clientName: clientName ?? this.clientName,
       clientContact: clientContact ?? this.clientContact,
+      panNumber: panNumber ?? this.panNumber,
+      panPassword: panPassword ?? this.panPassword,
       opponentName: opponentName ?? this.opponentName,
       opponentAdvocate: opponentAdvocate ?? this.opponentAdvocate,
       court: court ?? this.court,
@@ -163,19 +251,24 @@ class LegalCase {
       disposalResult: clearDisposalResult ? null : (disposalResult ?? this.disposalResult),
       disposedOn: disposedOn ?? this.disposedOn,
       totalFee: totalFee ?? this.totalFee,
-      feeReceived: feeReceived ?? this.feeReceived,
+      payments: payments ?? this.payments,
       updates: updates ?? this.updates,
+      transfers: transfers ?? this.transfers,
       documents: documents ?? this.documents,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
-  Map<String, dynamic> toMap() => {
+  /// [includeSecrets] is false for anything that leaves the device (backups, cloud sync).
+  Map<String, dynamic> toMap({bool includeSecrets = true}) => {
         'id': id,
         'type': type,
         'caseNumber': caseNumber,
         'caseTitle': caseTitle,
         'clientName': clientName,
         'clientContact': clientContact,
+        'panNumber': panNumber,
+        if (includeSecrets) 'panPassword': panPassword,
         'opponentName': opponentName,
         'opponentAdvocate': opponentAdvocate,
         'court': court,
@@ -190,34 +283,58 @@ class LegalCase {
         'disposalResult': disposalResult?.name,
         'disposedOn': disposedOn?.millisecondsSinceEpoch,
         'totalFee': totalFee,
-        'feeReceived': feeReceived,
+        'payments': payments.map((e) => e.toMap()).toList(),
         'updates': updates.map((e) => e.toMap()).toList(),
+        'transfers': transfers.map((e) => e.toMap()).toList(),
         'documents': documents.map((e) => e.toMap()).toList(),
+        'updatedAt': updatedAt?.millisecondsSinceEpoch,
       };
 
-  factory LegalCase.fromMap(Map map) => LegalCase(
-        id: '${map['id'] ?? ''}',
-        type: '${map['type'] ?? 'Court Case'}',
-        caseNumber: '${map['caseNumber'] ?? ''}',
-        caseTitle: '${map['caseTitle'] ?? ''}',
-        clientName: '${map['clientName'] ?? ''}',
-        clientContact: '${map['clientContact'] ?? ''}',
-        opponentName: '${map['opponentName'] ?? ''}',
-        opponentAdvocate: '${map['opponentAdvocate'] ?? ''}',
-        court: '${map['court'] ?? ''}',
-        judge: '${map['judge'] ?? ''}',
-        caseNature: '${map['caseNature'] ?? ''}',
-        sections: '${map['sections'] ?? ''}',
-        filingDate: map['filingDate'] == null ? null : DateTime.fromMillisecondsSinceEpoch(map['filingDate'] as int),
-        nextHearing: map['nextHearing'] == null ? null : DateTime.fromMillisecondsSinceEpoch(map['nextHearing'] as int),
-        hearingPurpose: '${map['hearingPurpose'] ?? ''}',
-        notes: '${map['notes'] ?? ''}',
-        status: CaseStatus.values.firstWhere((e) => e.name == map['status'], orElse: () => CaseStatus.active),
-        disposalResult: map['disposalResult'] == null ? null : DisposalResult.values.firstWhere((e) => e.name == map['disposalResult'], orElse: () => DisposalResult.allowed),
-        disposedOn: map['disposedOn'] == null ? null : DateTime.fromMillisecondsSinceEpoch(map['disposedOn'] as int),
-        totalFee: (map['totalFee'] as num?)?.toDouble() ?? 0,
-        feeReceived: (map['feeReceived'] as num?)?.toDouble() ?? 0,
-        updates: (map['updates'] as List? ?? []).map((e) => CaseUpdate.fromMap(Map<String, dynamic>.from(e))).toList(),
-        documents: (map['documents'] as List? ?? []).map((e) => CaseDocument.fromMap(Map<String, dynamic>.from(e))).toList(),
-      );
+  factory LegalCase.fromMap(Map map) {
+    var payments = _list(map['payments'], Payment.fromMap);
+    // Records saved before payment tracking only had a running total.
+    final legacyReceived = _money(map['feeReceived']);
+    if (map['payments'] == null && legacyReceived > 0) {
+      payments = [
+        Payment(
+          id: 'legacy-${_str(map['id'])}',
+          date: _date(map['filingDate']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+          amount: legacyReceived,
+          note: 'Received before payment tracking',
+        ),
+      ];
+    }
+    final type = _str(map['type']);
+    return LegalCase(
+      id: _str(map['id']),
+      type: type.isEmpty ? courtCase : type,
+      caseNumber: _str(map['caseNumber']),
+      caseTitle: _str(map['caseTitle']),
+      clientName: _str(map['clientName']),
+      clientContact: _str(map['clientContact']),
+      panNumber: _str(map['panNumber']),
+      panPassword: _str(map['panPassword']),
+      opponentName: _str(map['opponentName']),
+      opponentAdvocate: _str(map['opponentAdvocate']),
+      court: _str(map['court']),
+      judge: _str(map['judge']),
+      caseNature: _str(map['caseNature']),
+      sections: _str(map['sections']),
+      filingDate: _date(map['filingDate']),
+      nextHearing: _date(map['nextHearing']),
+      hearingPurpose: _str(map['hearingPurpose']),
+      notes: _str(map['notes']),
+      status: CaseStatus.values.firstWhere((e) => e.name == map['status'], orElse: () => CaseStatus.active),
+      disposalResult: map['disposalResult'] == null
+          ? null
+          : DisposalResult.values.firstWhere((e) => e.name == map['disposalResult'], orElse: () => DisposalResult.allowed),
+      disposedOn: _date(map['disposedOn']),
+      totalFee: _money(map['totalFee']),
+      payments: payments,
+      updates: _list(map['updates'], CaseUpdate.fromMap),
+      transfers: _list(map['transfers'], CourtTransfer.fromMap),
+      documents: _list(map['documents'], CaseDocument.fromMap),
+      updatedAt: _date(map['updatedAt']),
+    );
+  }
 }

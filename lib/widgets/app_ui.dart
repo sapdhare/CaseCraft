@@ -11,7 +11,10 @@ const danger = Color(0xFFB65B5B);
 
 String fmtDate(DateTime? d) => d == null ? 'Not set' : DateFormat('dd MMM yyyy').format(d);
 String fmtDay(DateTime d) => DateFormat('EEE, dd MMM').format(d);
-String rupees(num n) => '₹${n.toStringAsFixed(0)}';
+final _inr0 = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+final _inr2 = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
+/// Indian grouping (₹1,50,000); paise shown only when present.
+String rupees(num n) => (n * 100).round() % 100 == 0 ? _inr0.format(n) : _inr2.format(n);
 
 class BrandMark extends StatelessWidget {
   final double size;
@@ -46,7 +49,8 @@ class MetricTile extends StatelessWidget {
   final String label; final String value; final IconData icon; final Color accent;
   const MetricTile({super.key, required this.label, required this.value, required this.icon, required this.accent});
   @override
-  Widget build(BuildContext context) => SurfaceCard(padding: const EdgeInsets.all(17), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: accent.withValues(alpha: .12), borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: accent, size: 22)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: ink)), const SizedBox(height: 3), Text(label, style: const TextStyle(fontSize: 11.5, color: muted, fontWeight: FontWeight.w600))]))]));
+  // Stacked so long amounts and labels fit a 2-column phone grid at any text size.
+  Widget build(BuildContext context) => SurfaceCard(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: 38, height: 38, decoration: BoxDecoration(color: accent.withValues(alpha: .12), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: accent, size: 20)), const SizedBox(height: 10), FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: ink))), const SizedBox(height: 3), Text(label, style: const TextStyle(fontSize: 11.5, color: muted, fontWeight: FontWeight.w600))]));
 }
 
 class StatusPill extends StatelessWidget {

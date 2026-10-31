@@ -1,5 +1,5 @@
 name: casecraft
-version: 1.0.0+1
+version: 1.1.0+2
 description: CaseCraft — a polished offline-first legal practice command centre for iOS and Android.
 publish_to: 'none'
 
@@ -22,6 +22,8 @@ dependencies:
   file_picker: ^13.0.0
   path_provider: ^2.1.5
   share_plus: ^13.3.0
+  flutter_secure_storage: ^11.2.0
+  local_auth: ^3.0.2
 
 dev_dependencies:
   flutter_test:

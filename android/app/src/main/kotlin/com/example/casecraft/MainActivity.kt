@@ -1,5 +1,6 @@
 package com.example.casecraft
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// FragmentActivity is required by local_auth for the fingerprint / PIN prompt.
+class MainActivity : FlutterFragmentActivity()

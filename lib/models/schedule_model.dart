@@ -37,14 +37,18 @@ class ScheduleItem {
         id: '${map['id'] ?? ''}',
         title: '${map['title'] ?? ''}',
         category: '${map['category'] ?? 'Work'}',
-        startMinutes: (map['startMinutes'] as int?) ?? 600,
-        endMinutes: (map['endMinutes'] as int?) ?? 660,
-        weekdays: Set<int>.from(map['weekdays'] as List? ?? [1, 2, 3, 4, 5]),
+        startMinutes: _minutes(map['startMinutes'], 600),
+        endMinutes: _minutes(map['endMinutes'], 660),
+        weekdays: map['weekdays'] is List
+            ? (map['weekdays'] as List).whereType<num>().map((e) => e.toInt()).where((d) => d >= 1 && d <= 7).toSet()
+            : {1, 2, 3, 4, 5},
         location: '${map['location'] ?? ''}',
         notes: '${map['notes'] ?? ''}',
-        reminderEnabled: map['reminderEnabled'] as bool? ?? true,
+        reminderEnabled: map['reminderEnabled'] is bool ? map['reminderEnabled'] as bool : true,
       );
 }
+
+int _minutes(dynamic v, int fallback) => v is num && v >= 0 && v < 24 * 60 ? v.toInt() : fallback;
 
 String formatMinutes(int minutes) {
   final h = (minutes ~/ 60) % 24;
